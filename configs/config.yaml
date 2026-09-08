@@ -1,0 +1,55 @@
+# -----------------------------------------------------------------------------
+# Central config for the Voice-Clone Detection core module (SIH26104)
+# Every script reads from here so the whole team can tune behaviour
+# in one place instead of editing code.
+# -----------------------------------------------------------------------------
+
+audio:
+  sample_rate: 16000        # standard for speech models, keeps files small
+  mono: true
+  duration_seconds: 4       # fixed-length segments fed to the model
+  trim_silence: true
+  top_db: 30                # silence threshold for trimming (librosa)
+
+features:
+  type: "log_mel"           # log_mel | mfcc
+  n_mels: 64
+  n_fft: 1024
+  hop_length: 256
+  win_length: 1024
+
+data:
+  raw_dir: "data/raw"
+  processed_dir: "data/processed"
+  splits_dir: "data/splits"
+  classes: ["real", "cloned"]
+  train_ratio: 0.7
+  val_ratio: 0.15
+  test_ratio: 0.15
+  split_by_speaker: true    # IMPORTANT: prevents data leakage (see prepare_dataset.py)
+  random_seed: 42
+
+model:
+  name: "cnn_baseline"      # cnn_baseline | (advanced: ssl_wav2vec2)
+  input_shape: [64, 251]    # [n_mels, time_frames] approx for 4s @ 16kHz/hop 256
+  num_classes: 2
+  dropout: 0.3
+
+training:
+  batch_size: 32
+  epochs: 30
+  learning_rate: 0.001
+  early_stopping_patience: 5
+  checkpoint_dir: "checkpoints"
+  device: "auto"            # auto | cpu | cuda
+
+risk_score:
+  weights:
+    cloned_probability: 0.6
+    speaker_mismatch: 0.25   # 0 until Bhavya's module is integrated (see risk_score.py)
+    audio_quality_flag: 0.10
+    repeated_attempts: 0.05  # 0 until attempt-history tracking exists
+  thresholds:
+    low_max: 0.34
+    medium_max: 0.69
+    # anything above medium_max => HIGH

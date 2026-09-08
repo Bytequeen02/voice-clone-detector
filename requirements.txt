@@ -1,0 +1,12 @@
+numpy
+librosa
+soundfile
+torch
+torchaudio
+scikit-learn
+pandas
+pyyaml
+matplotlib
+tqdm
+flask
+flask-cors
