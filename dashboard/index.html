@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VoxSentinel — Voice Cloning Detection Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink: #12141c;
+    --ink-soft: #5b6472;
+    --paper: #edeff3;
+    --panel: #ffffff;
+    --line: #dcdfe6;
+    --signal: #2f6fed;
+    --signal-dim: #e8effd;
+    --alert: #c73e3e;
+    --alert-dim: #fbeaea;
+    --verified: #227a56;
+    --verified-dim: #e6f4ee;
+    --warn: #b8791a;
+    --warn-dim: #fbf1e2;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{
+    font-family:'IBM Plex Sans', sans-serif;
+    background:var(--paper);
+    color:var(--ink);
+    min-height:100vh;
+  }
+  header{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:20px 32px;
+    background:var(--ink);
+    color:#fff;
+  }
+  .brand{display:flex; align-items:center; gap:12px;}
+  .brand-mark{
+    width:34px; height:34px; border-radius:4px;
+    background:var(--signal);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .brand-mark svg{width:18px; height:18px;}
+  .brand-name{font-weight:600; font-size:18px; letter-spacing:-0.01em;}
+  .brand-sub{font-family:'IBM Plex Mono', monospace; font-size:12px; color:#a8b3c7;}
+  .status-pill{
+    font-family:'IBM Plex Mono', monospace; font-size:12px;
+    display:flex; align-items:center; gap:8px;
+    color:#c9d3e3;
+  }
+  .dot{width:8px; height:8px; border-radius:50%; background:#3fd67a; box-shadow:0 0 0 3px rgba(63,214,122,0.2);}
+
+  main{
+    max-width:1180px; margin:0 auto;
+    padding:32px;
+    display:grid; grid-template-columns: 1.1fr 1fr; gap:24px;
+  }
+  @media (max-width:900px){ main{grid-template-columns:1fr;} }
+
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-left:3px solid var(--ink);
+    padding:24px;
+  }
+  .panel h2{
+    font-size:15px; font-weight:600; margin-bottom:4px;
+  }
+  .panel .hint{
+    font-size:13px; color:var(--ink-soft); margin-bottom:20px;
+  }
+
+  /* Upload zone */
+  .dropzone{
+    border:1.5px dashed var(--line);
+    background:var(--paper);
+    padding:36px 20px;
+    text-align:center;
+    cursor:pointer;
+    transition:border-color .15s ease, background .15s ease;
+  }
+  .dropzone:hover, .dropzone.dragover{
+    border-color:var(--signal);
+    background:var(--signal-dim);
+  }
+  .dropzone svg{width:28px; height:28px; color:var(--ink-soft); margin-bottom:10px;}
+  .dropzone p{font-size:14px; color:var(--ink-soft);}
+  .dropzone .filename{
+    margin-top:12px; font-family:'IBM Plex Mono', monospace; font-size:13px;
+    color:var(--ink); font-weight:500;
+  }
+  input[type=file]{display:none;}
+
+  /* Waveform */
+  .waveform{
+    display:flex; align-items:flex-end; gap:3px;
+    height:64px; margin-top:20px;
+  }
+  .waveform span{
+    flex:1; background:var(--line); border-radius:1px;
+    transition:background .2s ease;
+  }
+  .waveform.active span{ background:var(--signal); }
+
+  button.primary{
+    margin-top:20px; width:100%;
+    background:var(--ink); color:#fff;
+    border:none; padding:13px; font-size:14px; font-weight:500;
+    font-family:'IBM Plex Sans', sans-serif;
+    cursor:pointer;
+  }
+  button.primary:disabled{ background:#b7bcc6; cursor:not-allowed; }
+  button.primary:not(:disabled):hover{ background:var(--signal); }
+
+  /* Result panel */
+  .empty-state{
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center; padding:50px 20px; color:var(--ink-soft); font-size:13px;
+    height:100%;
+  }
+  .empty-state svg{width:32px; height:32px; margin-bottom:12px; opacity:.5;}
+
+  .result-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:22px;}
+  .verdict{
+    display:inline-flex; align-items:center; gap:8px;
+    padding:6px 12px; font-size:13px; font-weight:600;
+  }
+  .verdict.real{ background:var(--verified-dim); color:var(--verified); }
+  .verdict.cloned{ background:var(--alert-dim); color:var(--alert); }
+  .verdict .dot{ box-shadow:none; }
+  .verdict.real .dot{ background:var(--verified); }
+  .verdict.cloned .dot{ background:var(--alert); }
+
+  .risk-badge{
+    display:inline-block; font-family:'IBM Plex Mono', monospace;
+    font-size:11px; font-weight:600; letter-spacing:0.03em;
+    padding:4px 10px; margin-left:10px;
+  }
+  .risk-badge.LOW{ background:var(--verified-dim); color:var(--verified); }
+  .risk-badge.MEDIUM{ background:var(--warn-dim); color:var(--warn); }
+  .risk-badge.HIGH{ background:var(--alert-dim); color:var(--alert); }
+
+  .quality-flags{ display:flex; gap:8px; margin-top:14px; flex-wrap:wrap; }
+  .qflag{
+    font-family:'IBM Plex Mono', monospace; font-size:11px;
+    padding:4px 8px; background:var(--paper); color:var(--ink-soft);
+    border:1px solid var(--line);
+  }
+  .qflag.on{ background:var(--warn-dim); color:var(--warn); border-color:transparent; }
+
+  .gauge-wrap{ display:flex; align-items:center; gap:20px; margin-bottom:24px;}
+  .gauge-num{ font-family:'IBM Plex Mono', monospace; }
+  .gauge-num .val{ font-size:36px; font-weight:600; }
+  .gauge-num .label{ font-size:12px; color:var(--ink-soft); }
+
+  .reasons{ margin-bottom:20px; }
+  .reasons h3{ font-size:13px; font-weight:600; margin-bottom:10px; color:var(--ink-soft); }
+  .reason-item{
+    display:flex; gap:10px; padding:10px 0;
+    border-bottom:1px solid var(--line);
+    font-size:13.5px;
+  }
+  .reason-item:last-child{ border-bottom:none; }
+  .reason-item .bullet{ color:var(--ink-soft); font-family:'IBM Plex Mono', monospace; font-size:12px; margin-top:2px;}
+
+  .history{ margin-top:28px; }
+  .history h3{ font-size:13px; font-weight:600; margin-bottom:10px; color:var(--ink-soft); }
+  .history-item{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 0; border-bottom:1px solid var(--line); font-size:13px;
+  }
+  .history-item:last-child{ border-bottom:none; }
+  .history-item .name{ font-family:'IBM Plex Mono', monospace; color:var(--ink-soft); }
+  .tag{ font-size:11px; font-weight:600; padding:3px 8px; }
+  .tag.real{ background:var(--verified-dim); color:var(--verified); }
+  .tag.cloned{ background:var(--alert-dim); color:var(--alert); }
+  .no-history{ font-size:13px; color:var(--ink-soft); padding:8px 0; }
+
+  footer{
+    max-width:1180px; margin:0 auto; padding:0 32px 32px;
+    font-size:12px; color:var(--ink-soft);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="brand-mark">
+      <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
+    </div>
+    <div>
+      <div class="brand-name">VoxSentinel</div>
+      <div class="brand-sub">real-time voice cloning detection</div>
+    </div>
+  </div>
+  <div class="status-pill"><span class="dot"></span> system online</div>
+</header>
+
+<main>
+
+  <!-- LEFT: Upload -->
+  <section class="panel">
+    <h2>Analyze audio</h2>
+    <p class="hint">Upload a clip to check whether the voice is genuine or synthetically cloned.</p>
+
+    <div class="dropzone" id="dropzone">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      <p>Drop an audio file here, or click to browse<br>WAV, MP3, up to 10 min</p>
+      <div class="filename" id="filename"></div>
+      <input type="file" id="fileInput" accept="audio/*">
+    </div>
+
+    <div class="waveform" id="waveform"></div>
+
+    <button class="primary" id="analyzeBtn" disabled>Analyze audio</button>
+  </section>
+
+  <!-- RIGHT: Results -->
+  <section class="panel" id="resultPanel">
+    <div class="empty-state" id="emptyState">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      <p>Results will appear here once you analyze a clip.</p>
+    </div>
+
+    <div id="resultContent" style="display:none;">
+      <div class="result-header">
+        <h2 id="fileHeading" style="font-size:15px;"></h2>
+        <span>
+          <span class="verdict" id="verdictTag"></span>
+          <span class="risk-badge" id="riskBadge"></span>
+        </span>
+      </div>
+
+      <div class="gauge-wrap">
+        <svg width="90" height="90" viewBox="0 0 100 100">
+          <circle cx="50" cy="50" r="42" fill="none" stroke="#e5e8ee" stroke-width="10"/>
+          <circle id="gaugeArc" cx="50" cy="50" r="42" fill="none" stroke="var(--alert)" stroke-width="10"
+            stroke-dasharray="264" stroke-dashoffset="264" stroke-linecap="round" transform="rotate(-90 50 50)"/>
+        </svg>
+        <div class="gauge-num">
+          <div class="val" id="riskValue">0%</div>
+          <div class="label">risk score · <span id="confidenceValue">0%</span> confidence</div>
+        </div>
+      </div>
+
+      <div class="reasons">
+        <h3>Why this result</h3>
+        <div id="reasonsList"></div>
+      </div>
+
+      <div class="quality-flags" id="qualityFlags"></div>
+    </div>
+
+    <div class="history">
+      <h3>Detection history</h3>
+      <div id="historyList"><div class="no-history">No clips analyzed yet.</div></div>
+    </div>
+  </section>
+
+</main>
+
+<footer>MVP demo — result values are mock, but the JSON shape matches Kashish's /detect API contract exactly. Swap in the real fetch call (marked INTEGRATION POINT in the code) once the backend is live.</footer>
+
+<script>
+  const dropzone = document.getElementById('dropzone');
+  const fileInput = document.getElementById('fileInput');
+  const filenameEl = document.getElementById('filename');
+  const analyzeBtn = document.getElementById('analyzeBtn');
+  const waveform = document.getElementById('waveform');
+  const emptyState = document.getElementById('emptyState');
+  const resultContent = document.getElementById('resultContent');
+  const historyList = document.getElementById('historyList');
+
+  let currentFile = null;
+  let history = [];
+
+  // Build static waveform bars
+  for(let i=0;i<48;i++){
+    const bar = document.createElement('span');
+    bar.style.height = (8 + Math.random()*56) + 'px';
+    waveform.appendChild(bar);
+  }
+
+  dropzone.addEventListener('click', () => fileInput.click());
+  dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+  dropzone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropzone.classList.remove('dragover');
+    if(e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener('change', e => {
+    if(e.target.files.length) handleFile(e.target.files[0]);
+  });
+
+  function handleFile(file){
+    currentFile = file;
+    filenameEl.textContent = file.name;
+    analyzeBtn.disabled = false;
+    waveform.classList.add('active');
+  }
+
+  analyzeBtn.addEventListener('click', async () => {
+    if(!currentFile) return;
+    analyzeBtn.disabled = true;
+    analyzeBtn.textContent = 'Analyzing...';
+
+    // --- INTEGRATION POINT ---
+    // Once Chahat's backend / Kashish's Flask API (src/api/app.py) is running,
+    // replace mockAnalyze() below with a real call, e.g.:
+    //
+    //   const formData = new FormData();
+    //   formData.append('audio', currentFile);
+    //   const response = await fetch('http://localhost:5000/detect', {
+    //     method: 'POST',
+    //     body: formData
+    //   });
+    //   const result = await response.json();
+    //
+    // 'result' will already match the exact shape mockAnalyze() below produces,
+    // so nothing else in this file needs to change.
+
+    setTimeout(() => {
+      const result = mockAnalyze();
+      showResult(currentFile.name, result);
+      addToHistory(currentFile.name, result);
+      analyzeBtn.disabled = false;
+      analyzeBtn.textContent = 'Analyze audio';
+    }, 1400);
+  });
+
+  // Mock version of the real /detect API contract from the core AI module README:
+  // { prediction, cloned_probability, confidence, risk_score:{risk_score, risk_level},
+  //   explanation: [...], quality_flags: {...} }
+  function mockAnalyze(){
+    const clonedProb = Math.random();
+    const prediction = clonedProb > 0.5 ? 'cloned' : 'real';
+    const risk = clonedProb; // 0..1, mock stands in for the real weighted formula
+    const riskLevel = risk <= 0.34 ? 'LOW' : risk <= 0.69 ? 'MEDIUM' : 'HIGH';
+
+    const explanationBank = {
+      cloned: [
+        'Unnatural pitch consistency across the clip',
+        'Spectral artifacts typical of synthetic generation',
+        'Mismatch between breathing pattern and speech rhythm',
+        'Frequency bands show signs of vocoder processing'
+      ],
+      real: [
+        'Natural pitch and energy variation throughout',
+        'Breathing and pause patterns consistent with human speech',
+        'No spectral artifacts associated with synthetic audio',
+        'Background noise profile consistent with a real recording environment'
+      ]
+    };
+    const pool = explanationBank[prediction];
+    const explanation = pool.sort(() => Math.random()-0.5).slice(0, 2 + Math.floor(Math.random()*2));
+
+    return {
+      prediction,
+      cloned_probability: clonedProb,
+      confidence: 0.6 + Math.random()*0.35,
+      risk_score: { risk_score: risk, risk_level: riskLevel },
+      explanation,
+      quality_flags: {
+        low_energy: Math.random() < 0.15,
+        clipping: Math.random() < 0.1,
+        very_short: Math.random() < 0.1
+      }
+    };
+  }
+
+  function showResult(name, result){
+    emptyState.style.display = 'none';
+    resultContent.style.display = 'block';
+
+    document.getElementById('fileHeading').textContent = name;
+
+    const tag = document.getElementById('verdictTag');
+    tag.className = 'verdict ' + result.prediction;
+    tag.innerHTML = '<span class="dot"></span>' + (result.prediction === 'cloned' ? 'Likely cloned' : 'Likely real');
+
+    const level = result.risk_score.risk_level;
+    const badge = document.getElementById('riskBadge');
+    badge.className = 'risk-badge ' + level;
+    badge.textContent = level;
+
+    const riskPct = Math.round(result.risk_score.risk_score * 100);
+    document.getElementById('riskValue').textContent = riskPct + '%';
+    document.getElementById('confidenceValue').textContent = Math.round(result.confidence * 100) + '%';
+
+    const arc = document.getElementById('gaugeArc');
+    const circumference = 264;
+    const offset = circumference - (circumference * riskPct / 100);
+    arc.style.stroke = result.prediction === 'cloned' ? 'var(--alert)' : 'var(--verified)';
+    arc.style.strokeDashoffset = offset;
+
+    const list = document.getElementById('reasonsList');
+    list.innerHTML = '';
+    result.explanation.forEach(r => {
+      const item = document.createElement('div');
+      item.className = 'reason-item';
+      item.innerHTML = '<span class="bullet">—</span><span>' + r + '</span>';
+      list.appendChild(item);
+    });
+
+    const flagsWrap = document.getElementById('qualityFlags');
+    flagsWrap.innerHTML = '';
+    const flagLabels = { low_energy: 'low energy', clipping: 'clipping', very_short: 'very short clip' };
+    Object.entries(result.quality_flags).forEach(([key, value]) => {
+      const chip = document.createElement('span');
+      chip.className = 'qflag' + (value ? ' on' : '');
+      chip.textContent = flagLabels[key];
+      flagsWrap.appendChild(chip);
+    });
+  }
+
+  function addToHistory(name, result){
+    history.unshift({ name, ...result, time: new Date().toLocaleTimeString() });
+    historyList.innerHTML = '';
+    history.slice(0,6).forEach(h => {
+      const pct = Math.round(h.risk_score.risk_score * 100);
+      const row = document.createElement('div');
+      row.className = 'history-item';
+      row.innerHTML = `<span class="name">${h.name}</span><span class="tag ${h.prediction}">${h.prediction === 'cloned' ? 'Cloned' : 'Real'} · ${h.risk_score.risk_level} · ${pct}%</span>`;
+      historyList.appendChild(row);
+    });
+  }
+</script>
+
+</body>
+</html>
