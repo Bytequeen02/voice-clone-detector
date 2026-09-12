@@ -12,3 +12,4 @@ flask
 flask-cors
 speechbrain==1.0.2
 scipy
+noisereduce
