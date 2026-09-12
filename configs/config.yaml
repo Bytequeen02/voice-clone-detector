@@ -10,6 +10,8 @@ audio:
   duration_seconds: 4       # fixed-length segments fed to the model
   trim_silence: true
   top_db: 30                # silence threshold for trimming (librosa)
+  apply_noise_reduction: true
+  noise_reduce_prop_decrease: 0.8
 
 features:
   type: "log_mel"           # log_mel | mfcc
@@ -17,6 +19,12 @@ features:
   n_fft: 1024
   hop_length: 256
   win_length: 1024
+  n_mfcc: 40
+
+segmentation:
+  segment_duration_sec: 4
+  segment_overlap_sec: 1
+  min_segment_duration_sec: 1
 
 data:
   raw_dir: "data/raw"

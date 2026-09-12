@@ -10,17 +10,41 @@ This is intentionally written as a set of small, pure functions
      inference time -> no train/serve mismatch.
 
 Pipeline order:
-    load -> resample -> mono -> trim_silence -> normalize -> fix_length -> log_mel
+    load -> resample -> mono -> reduce_noise -> trim_silence -> normalize -> fix_length -> log_mel
 """
 
 import numpy as np
 import librosa
+
+try:
+    import noisereduce as nr
+    _NOISEREDUCE_AVAILABLE = True
+except ImportError:
+    _NOISEREDUCE_AVAILABLE = False
 
 
 def load_audio(path: str, target_sr: int) -> np.ndarray:
     """Load an audio file and resample it. Returns mono float32 waveform."""
     y, _ = librosa.load(path, sr=target_sr, mono=True)
     return y.astype(np.float32)
+
+
+def reduce_noise(y: np.ndarray, sr: int, cfg: dict) -> np.ndarray:
+    """Apply spectral-gating noise reduction. Falls back to raw signal
+    if the 'noisereduce' package isn't installed or disabled in config."""
+    a_cfg = cfg["audio"]
+    if not a_cfg.get("apply_noise_reduction", False):
+        return y
+
+    if not _NOISEREDUCE_AVAILABLE:
+        print("[audio_preprocessing] Warning: 'noisereduce' not installed, skipping denoising.")
+        return y
+
+    cleaned = nr.reduce_noise(
+        y=y, sr=sr,
+        prop_decrease=a_cfg.get("noise_reduce_prop_decrease", 0.8),
+    )
+    return cleaned.astype(np.float32)
 
 
 def trim_silence(y: np.ndarray, top_db: int = 30) -> np.ndarray:
@@ -51,6 +75,51 @@ def fix_length(y: np.ndarray, target_len: int) -> np.ndarray:
     pad_left = pad_total // 2
     pad_right = pad_total - pad_left
     return np.pad(y, (pad_left, pad_right), mode="constant")
+
+
+def segment_audio(y: np.ndarray, sr: int, cfg: dict):
+    """Split a waveform into fixed-length overlapping segments.
+    Returns: List[dict] with segment_id, start_time, end_time, audio."""
+    s_cfg = cfg["segmentation"]
+    seg_len = int(s_cfg["segment_duration_sec"] * sr)
+    hop_len = int((s_cfg["segment_duration_sec"] - s_cfg["segment_overlap_sec"]) * sr)
+    min_len = int(s_cfg["min_segment_duration_sec"] * sr)
+
+    segments = []
+    start = 0
+    seg_id = 0
+
+    if len(y) <= seg_len:
+        padded = np.pad(y, (0, max(0, seg_len - len(y))))
+        segments.append({
+            "segment_id": 0,
+            "start_time": 0.0,
+            "end_time": len(y) / sr,
+            "audio": padded,
+        })
+        return segments
+
+    while start < len(y):
+        end = start + seg_len
+        chunk = y[start:end]
+
+        if len(chunk) < min_len:
+            break
+
+        if len(chunk) < seg_len:
+            chunk = np.pad(chunk, (0, seg_len - len(chunk)))
+
+        segments.append({
+            "segment_id": seg_id,
+            "start_time": round(start / sr, 3),
+            "end_time": round(min(end, len(y)) / sr, 3),
+            "audio": chunk,
+        })
+
+        seg_id += 1
+        start += hop_len
+
+    return segments
 
 
 def log_mel_spectrogram(
@@ -89,6 +158,8 @@ def preprocess_file(path: str, cfg: dict) -> np.ndarray:
     f_cfg = cfg["features"]
 
     y = load_audio(path, target_sr=a_cfg["sample_rate"])
+
+    y = reduce_noise(y, sr=a_cfg["sample_rate"], cfg=cfg)
 
     if a_cfg.get("trim_silence", True):
         y = trim_silence(y, top_db=a_cfg.get("top_db", 30))
